@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "my_bucket" {
-  bucket        = "my-terraform-demo-bucket-123456"
+  bucket        = "my-terraform-demo-bucket-qq1122"
   force_destroy = true
 
   tags = {
@@ -13,11 +13,6 @@ resource "aws_s3_bucket" "my_bucket" {
     Project     = "Terraform"
     Department  = "IT"
   }
-}
-
-resource "aws_s3_bucket_acl" "my_bucket_acl" {
-  bucket = aws_s3_bucket.my_bucket.id
-  acl    = "private"
 }
 
 resource "aws_s3_bucket_versioning" "my_bucket_versioning" {
