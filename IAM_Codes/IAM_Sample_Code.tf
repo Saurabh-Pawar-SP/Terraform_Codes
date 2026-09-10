@@ -2,29 +2,25 @@ provider "aws" {
   region = "us-east-1"
 }
 
-resource "aws_iam_user" "Dev1-user"{
-    name = "devops-user"
+resource "aws_iam_user" "Dev1-user" {
+  name = "devops-user"
 
-    tags = {
-        Environment = "dev"
-        ManagedBy   = "Terraform"
+  tags = {
+    Environment = "dev"
+    ManagedBy   = "Terraform"
   }
 }
 
-resource "aws_iam_group" "Dev1-Group"{
-    name= "Dev1-Group"
-    tags={
-        Environment = "dev"
-        ManagedBy   = "Terraform" 
-    }
+resource "aws_iam_group" "Dev1-Group" {
+  name = "Dev1-Group"
 }
 
-resource "aws_iam_policy" "s3-access"{
-    name= "s3-access-policy"
-    description = "Allow access to application S3 bucket"
+resource "aws_iam_policy" "s3-access" {
+  name        = "s3-access-policy"
+  description = "Allow access to application S3 bucket"
 
-    policy = jsonencode({
-        Version = "2012-10-17"
+  policy = jsonencode({
+    Version = "2012-10-17"
 
     Statement = [
       {
