@@ -2,7 +2,7 @@ provider "aws" {
   region = "us-east-1"
 }
 
-resource "aws_iam_user" "Dev1-user" {
+resource "aws_iam_user" "dev1_user" {
   name = "devops-user"
 
   tags = {
@@ -11,11 +11,19 @@ resource "aws_iam_user" "Dev1-user" {
   }
 }
 
-resource "aws_iam_group" "Dev1-Group" {
+resource "aws_iam_group" "dev1_group" {
   name = "Dev1-Group"
 }
 
-resource "aws_iam_policy" "s3-access" {
+resource "aws_iam_user_group_membership" "dev1_membership" {
+  user = aws_iam_user.dev1_user.name
+
+  groups = [
+    aws_iam_group.dev1_group.name
+  ]
+}
+
+resource "aws_iam_policy" "s3_access" {
   name        = "s3-access-policy"
   description = "Allow access to application S3 bucket"
 
