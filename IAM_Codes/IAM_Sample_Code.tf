@@ -40,5 +40,60 @@ resource "aws_iam_policy" "s3-access" {
       }
     ]
   })
-
 }
+
+resource "aws_iam_group_policy_attachment" "s3_access" {
+  group      = aws_iam_group.dev1_group.name
+  policy_arn = aws_iam_policy.s3_access.arn
+}
+
+resource "aws_iam_role" "dev1_role" {
+  name = "Dev1-Admin-Role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          AWS = aws_iam_user.dev1_user.arn
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Environment = "dev"
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "dev1_admin_access" {
+  role       = aws_iam_role.dev1_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+output "iam_user_name" {
+  value = aws_iam_user.dev1_user.name
+}
+
+output "iam_user_arn" {
+  value = aws_iam_user.dev1_user.arn
+}
+
+output "iam_group_name" {
+  value = aws_iam_group.dev1_group.name
+}
+
+output "iam_role_name" {
+  value = aws_iam_role.dev1_role.name
+}
+
+output "iam_role_arn" {
+  value = aws_iam_role.dev1_role.arn
+}
+
