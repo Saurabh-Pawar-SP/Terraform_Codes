@@ -1,0 +1,419 @@
+# ============================================================
+# PROVIDER
+# ============================================================
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+# ============================================================
+# VARIABLES
+# ============================================================
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "dev"
+}
+
+variable "project_name" {
+  description = "Project name"
+  type        = string
+  default     = "my-project"
+}
+
+# ============================================================
+# DATA - CURRENT AWS ACCOUNT
+# ============================================================
+
+data "aws_caller_identity" "current" {}
+
+# ============================================================
+# IAM USER
+# ============================================================
+
+resource "aws_iam_user" "devops_user" {
+  name = "devops-user"
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
+
+# ============================================================
+# IAM GROUP - DEVELOPERS
+# ============================================================
+
+resource "aws_iam_group" "developers" {
+  name = "Developers"
+}
+
+# Add user to Developers group
+resource "aws_iam_user_group_membership" "devops_user_membership" {
+  user = aws_iam_user.devops_user.name
+
+  groups = [
+    aws_iam_group.developers.name
+  ]
+}
+
+# ============================================================
+# CUSTOM S3 POLICY
+# ============================================================
+
+resource "aws_iam_policy" "s3_application_access" {
+  name        = "${var.project_name}-s3-access"
+  description = "Allow application S3 bucket access"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid    = "ApplicationBucketAccess"
+        Effect = "Allow"
+
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+
+        Resource = [
+          "arn:aws:s3:::my-application-bucket/*"
+        ]
+      },
+      {
+        Sid    = "ApplicationBucketList"
+        Effect = "Allow"
+
+        Action = [
+          "s3:ListBucket"
+        ]
+
+        Resource = [
+          "arn:aws:s3:::my-application-bucket"
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Attach S3 policy to Developers group
+resource "aws_iam_group_policy_attachment" "developers_s3" {
+  group      = aws_iam_group.developers.name
+  policy_arn = aws_iam_policy.s3_application_access.arn
+}
+
+# ============================================================
+# IAM GROUP - ADMINS
+# ============================================================
+
+resource "aws_iam_group" "admins" {
+  name = "Admins"
+}
+
+# AdministratorAccess
+#
+# Use carefully in production.
+resource "aws_iam_group_policy_attachment" "admins_administrator_access" {
+  group      = aws_iam_group.admins.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+# ============================================================
+# IAM ROLE - EC2
+# ============================================================
+
+resource "aws_iam_role" "ec2_role" {
+  name = "${var.project_name}-ec2-role"
+
+  # EC2 is allowed to assume this role
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid    = "EC2AssumeRole"
+        Effect = "Allow"
+
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
+
+# ============================================================
+# EC2 ROLE POLICY
+# ============================================================
+
+resource "aws_iam_role_policy_attachment" "ec2_s3_readonly" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+}
+
+# ============================================================
+# EC2 INSTANCE PROFILE
+# ============================================================
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "${var.project_name}-ec2-profile"
+  role = aws_iam_role.ec2_role.name
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
+
+# ============================================================
+# IAM ROLE - LAMBDA
+# ============================================================
+
+resource "aws_iam_role" "lambda_role" {
+  name = "${var.project_name}-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid    = "LambdaAssumeRole"
+        Effect = "Allow"
+
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Lambda basic execution permissions
+resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# ============================================================
+# CUSTOM APPLICATION POLICY
+# ============================================================
+
+resource "aws_iam_policy" "application_policy" {
+  name        = "${var.project_name}-application-policy"
+  description = "Application level AWS permissions"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid    = "ReadEC2Information"
+        Effect = "Allow"
+
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeVolumes",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeVpcs"
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid    = "ReadCloudWatch"
+        Effect = "Allow"
+
+        Action = [
+          "cloudwatch:GetMetricData",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:ListMetrics"
+        ]
+
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Attach application policy to EC2 role
+resource "aws_iam_role_policy_attachment" "ec2_application_policy" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = aws_iam_policy.application_policy.arn
+}
+
+# ============================================================
+# IAM ROLE - CROSS ACCOUNT / ADMIN ROLE EXAMPLE
+# ============================================================
+
+resource "aws_iam_role" "admin_assumable_role" {
+  name = "${var.project_name}-admin-assumable-role"
+
+  # User must explicitly be allowed to call sts:AssumeRole
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid    = "AllowDevOpsUser"
+        Effect = "Allow"
+
+        Principal = {
+          AWS = aws_iam_user.devops_user.arn
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Administrator permission for the assumable role
+resource "aws_iam_role_policy_attachment" "admin_role_policy" {
+  role       = aws_iam_role.admin_assumable_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+# ============================================================
+# ALLOW USER TO ASSUME ADMIN ROLE
+# ============================================================
+
+resource "aws_iam_policy" "assume_admin_role" {
+  name        = "${var.project_name}-assume-admin-role"
+  description = "Allow DevOps user to assume admin role"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid    = "AssumeAdminRole"
+        Effect = "Allow"
+
+        Action = [
+          "sts:AssumeRole"
+        ]
+
+        Resource = aws_iam_role.admin_assumable_role.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_user_policy_attachment" "devops_assume_admin" {
+  user       = aws_iam_user.devops_user.name
+  policy_arn = aws_iam_policy.assume_admin_role.arn
+}
+
+# ============================================================
+# IAM PASSWORD POLICY
+# ============================================================
+
+resource "aws_iam_account_password_policy" "password_policy" {
+
+  minimum_password_length = 14
+
+  require_lowercase_characters = true
+  require_uppercase_characters = true
+  require_numbers              = true
+  require_symbols              = true
+
+  allow_users_to_change_password = true
+
+  password_reuse_prevention = 5
+
+  max_password_age = 90
+
+  hard_expiry = false
+}
+
+# ============================================================
+# OUTPUTS
+# ============================================================
+
+output "aws_account_id" {
+  value = data.aws_caller_identity.current.account_id
+}
+
+output "devops_user_name" {
+  value = aws_iam_user.devops_user.name
+}
+
+output "devops_user_arn" {
+  value = aws_iam_user.devops_user.arn
+}
+
+output "developers_group_name" {
+  value = aws_iam_group.developers.name
+}
+
+output "admins_group_name" {
+  value = aws_iam_group.admins.name
+}
+
+output "ec2_role_name" {
+  value = aws_iam_role.ec2_role.name
+}
+
+output "ec2_role_arn" {
+  value = aws_iam_role.ec2_role.arn
+}
+
+output "ec2_instance_profile_name" {
+  value = aws_iam_instance_profile.ec2_profile.name
+}
+
+output "lambda_role_name" {
+  value = aws_iam_role.lambda_role.name
+}
+
+output "lambda_role_arn" {
+  value = aws_iam_role.lambda_role.arn
+}
+
+output "admin_assumable_role_name" {
+  value = aws_iam_role.admin_assumable_role.name
+}
+
+output "admin_assumable_role_arn" {
+  value = aws_iam_role.admin_assumable_role.arn
+}
